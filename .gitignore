@@ -1,0 +1,49 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+
+# Source material that must not be published
+*.docx
+*.jpeg
+*.jpg
+PROJECT_MEMORY.md
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.db
+*.sqlite3
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# Data (finale ZIP and generated datasets)
+data/raw/
+data/generated/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Raw training data stays out of git (large, and dataset licences restrict redistribution).
+models/**/*.csv
+models/**/*.zip
+
+# Original media as supplied; the page uses the copies in frontend/public/home
+Images&Videos/
+
+# Home page media is part of the site, unlike the photos ignored above
+!frontend/public/home/*

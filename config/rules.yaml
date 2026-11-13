@@ -1,0 +1,118 @@
+# Business rules. Anything the finale data may force us to change lives here, not in code.
+# Values are validated at load time; an invalid file stops the import with a clear error.
+
+ingestion:
+  # Used when an airport has no valid IANA timezone (plan v2, G12). Rows using it are flagged.
+  default_timezone: Asia/Kolkata
+  # Used when a price has no currency column and the mapping sets no constant.
+  default_currency: INR
+  default_cabin_class: economy
+  # Fallbacks for capacity the source does not supply. Each use is counted in the import report.
+  default_seat_capacity: 180
+  default_rooms_per_type: 10
+  default_max_occupancy: 2
+  # A hotel with no room-type file gets one room type with this name, priced from the hotel rate.
+  default_room_name: Standard Room
+  # Longer flights are treated as data errors.
+  max_flight_duration_minutes: 1200
+  # A supplied duration this far from departure/arrival times is reported (the times win).
+  duration_mismatch_minutes: 90
+  # Minimum rapidfuzz score to match a misspelt city to a known one in the same country.
+  city_match_threshold: 90
+  # If more than this share of an entity's rows is rejected, nothing is published.
+  max_reject_ratio: 0.2
+  max_stored_rejects: 5000
+  # Upload and archive limits (protects against oversized or malicious archives).
+  max_upload_mb: 100
+  max_uncompressed_mb: 1024
+  max_archive_members: 200
+  # Repeating flight schedules are turned into dated flights up to this many days ahead.
+  schedule_horizon_days: 90
+
+pricing:
+  # Prices are shown in the supplier's currency; totals are also converted to this currency.
+  display_currency: INR
+  # Static demo conversion rates (units of display currency per 1 unit). Not live market rates;
+  # the UI labels every converted amount as approximate. Replace with the finale's rates if given.
+  fx_rates:
+    INR: 1
+    AED: 22.7
+    SGD: 64.5
+    THB: 2.44
+    GBP: 106
+    LKR: 0.286
+    NPR: 0.625
+    QAR: 22.7
+    USD: 84
+    EUR: 91
+  fx_note: Converted with fixed demo rates from config/rules.yaml, not live exchange rates.
+  # The supplied data has no taxes or fees, so price breakdowns list them as not included.
+  taxes_included_in_data: false
+
+search:
+  # Connections built from single flights (one stop at most).
+  min_connection_minutes: 60
+  max_connection_minutes: 360
+  max_results: 200
+  max_hotel_nights: 30
+  # Recent searches kept per signed-in traveller (they can clear them at any time).
+  history_keep: 30
+
+bookings:
+  # How long seats and rooms are held while the traveller pays.
+  hold_minutes: 15
+  max_travellers: 9
+  # The supplied data has no fare rules, so cancellation follows this TripMind demo policy.
+  # Flights: full refund within this many hours of booking, otherwise this share of the fare.
+  flight_free_cancellation_hours: 24
+  flight_refund_percent_after_window: 0
+  # Hotels: refundable rooms are refunded in full until this many hours before check-in
+  # (14:00 local on the check-in day); non-refundable rooms are not refunded.
+  hotel_free_cancellation_hours_before_check_in: 24
+  # Changing a flight (another date or time on the same route): free within this many hours of
+  # booking, then this fee per traveller plus any fare difference. A cheaper new fare is refunded
+  # only inside the free window. Stays: refundable rooms can change dates until the cancellation
+  # deadline, paying or refunding the rate difference; non-refundable rooms cannot change.
+  flight_free_change_hours: 24
+  flight_change_fee: 1500
+
+watchlist:
+  max_saved_hotels: 200
+  max_active_alerts: 20
+  # Without a target price, an alert fires once the price is this much below the price when set.
+  alert_min_drop_percent: 5
+  # How often the worker re-prices active alerts.
+  alert_check_minutes: 30
+
+reviews:
+  # Travellers can review a booked stay from check-out until this many days later.
+  review_window_days: 365
+
+support:
+  # A request about a booking that starts within this many hours is urgent.
+  urgent_within_hours: 72
+  max_open_tickets: 10
+
+retention:
+  # Days kept after which the worker deletes the data (daily). Bookings and payments are kept.
+  refresh_token_days: 30
+  notification_days: 180
+  search_history_days: 180
+  audit_days: 730
+
+recovery:
+  # Delays at least this long give the traveller the right to rebook or take a refund.
+  significant_delay_minutes: 180
+  # When the airline or hotel causes the change, the replacement costs nothing extra and a
+  # cheaper replacement is not partly refunded (TripMind demo policy).
+  # Rebooking alternatives are searched on the original day and the following days.
+  search_days: 2
+  max_alternatives: 4
+
+loyalty:
+  # Points earned per 100 units of the display currency paid; refunds take points back.
+  points_per_100: 1
+  tiers:            # minimum lifetime points
+    Explorer: 0
+    Silver: 500
+    Gold: 2000

@@ -1,0 +1,31 @@
+# Feature flags. Every module that can be switched off is listed here.
+# Override any flag with an environment variable: FEATURE_<NAME>=true|false
+# Only features that exist in the codebase are listed; new modules add their flag when they land.
+
+features:
+  # One-click sign-in as a seeded demo account. Refused at start-up in production.
+  demo_login: true
+  # Private guest sessions started automatically on a first visit: no sign-up or sign-in needed.
+  guest_access: true
+  # Public self-service sign-up.
+  registration: true
+  # Admin dataset import: upload, profile, dry run, publish, import reports and quarantine.
+  data_import: true
+  # Flight search: direct flights and one-stop connections, one-way or return.
+  flight_search: true
+  # Hotel search and hotel details.
+  hotel_search: true
+  # Checkout, payments (simulated), cancellations and My Trips.
+  bookings: true
+  # Connected-trip planner: ranked flight + stay bundles with the Journey Confidence Report.
+  trip_planner: true
+  # Disruptions (operators) and recovery cases with rebooking or refund (travellers).
+  recovery: true
+  # Share a plan with friends: members vote, consensus is computed, the owner decides.
+  group_planning: true
+  # Saved stays and price alerts (checked by the worker).
+  watchlist: true
+  # Hotel reviews with the average rating; travellers review completed stays.
+  reviews: true
+  # Support requests filed by keyword rules, with an admin queue.
+  support: true

@@ -1,0 +1,93 @@
+"""Model registry.
+
+Importing this module registers every ORM model on `Base.metadata`. Alembic and the test suite
+import it so that metadata is complete; application code imports models from their own modules.
+"""
+
+from app.db.base import Base
+from app.modules.audit.models import AuditLog
+from app.modules.auth.models import PasswordResetToken, RefreshToken, User
+from app.modules.bookings.models import (
+    Booking,
+    BookingEvent,
+    BookingExtra,
+    BookingItem,
+    BookingTraveller,
+    Payment,
+    Refund,
+    Trip,
+)
+from app.modules.catalog.models import (
+    Airport,
+    AirportServedCity,
+    Attraction,
+    City,
+    CityLink,
+    Country,
+    Flight,
+    Hotel,
+    HotelAmenity,
+    HotelReview,
+    RoomType,
+    Transfer,
+)
+from app.modules.groups.models import GroupMember, GroupVote, TripGroup
+from app.modules.holiday.models import HolidayPackage
+from app.modules.inventory.models import FlightInventory, InventoryClaim, RoomNightInventory
+from app.modules.loyalty.module import LoyaltyEntry
+from app.modules.notifications.models import Notification
+from app.modules.operations.models import Disruption
+from app.modules.planner.models import TripPlan
+from app.modules.profiles.module import TravellerProfile
+from app.modules.recovery.models import RecoveryCase
+from app.modules.reviews.models import StayReview
+from app.modules.search.history import SearchHistory
+from app.modules.support.models import SupportTicket, TicketMessage
+from app.modules.watchlist.models import PriceAlert, SavedHotel
+
+__all__ = [
+    "Airport",
+    "AirportServedCity",
+    "Attraction",
+    "AuditLog",
+    "Base",
+    "Booking",
+    "BookingEvent",
+    "BookingExtra",
+    "BookingItem",
+    "BookingTraveller",
+    "City",
+    "CityLink",
+    "Country",
+    "Disruption",
+    "Flight",
+    "FlightInventory",
+    "GroupMember",
+    "GroupVote",
+    "HolidayPackage",
+    "Hotel",
+    "HotelAmenity",
+    "HotelReview",
+    "InventoryClaim",
+    "LoyaltyEntry",
+    "Notification",
+    "PasswordResetToken",
+    "Payment",
+    "PriceAlert",
+    "RecoveryCase",
+    "RefreshToken",
+    "Refund",
+    "RoomNightInventory",
+    "RoomType",
+    "SavedHotel",
+    "SearchHistory",
+    "StayReview",
+    "SupportTicket",
+    "TicketMessage",
+    "Transfer",
+    "TravellerProfile",
+    "Trip",
+    "TripGroup",
+    "TripPlan",
+    "User",
+]

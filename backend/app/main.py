@@ -1,0 +1,116 @@
+"""Application factory. Run with: uvicorn app.main:create_app --factory"""
+
+from __future__ import annotations
+
+import asyncio
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+import structlog
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+from starlette.responses import Response
+
+from app import __version__
+from app.core.config import Settings, get_settings
+from app.core.errors import register_exception_handlers
+from app.core.features import load_feature_flags
+from app.core.logging import configure_logging
+from app.core.middleware import RequestContextMiddleware, SecurityHeadersMiddleware
+from app.core.tracing import configure_tracing
+from app.db.session import get_engine
+from app.modules.admin.module import router as admin_console_router
+from app.modules.auth.router import router as auth_router
+from app.modules.bookings.jobs import run_hold_sweeper
+from app.modules.bookings.router import router as bookings_router
+from app.modules.groups.router import router as groups_router
+from app.modules.holiday.router import router as holiday_router
+from app.modules.loyalty.module import router as loyalty_router
+from app.modules.meta.router import router as meta_router
+from app.modules.notifications.router import router as notifications_router
+from app.modules.planner.router import router as planner_router
+from app.modules.privacy.module import router as privacy_router
+from app.modules.profiles.module import router as profiles_router
+from app.modules.recovery.router import admin_router as operations_router
+from app.modules.recovery.router import router as recovery_router
+from app.modules.reviews.router import router as reviews_router
+from app.modules.search.router import router as search_router
+from app.modules.support.router import router as support_router
+from app.modules.watchlist.router import router as watchlist_router
+
+log = structlog.get_logger(__name__)
+
+
+def create_app(settings: Settings | None = None) -> FastAPI:
+    settings = settings or get_settings()
+    configure_logging(settings)
+    flags = load_feature_flags(settings)  # validates flags at start-up (fail fast)
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        log.info(
+            "api_started",
+            environment=settings.environment,
+            version=__version__,
+            features=flags.as_dict(),
+        )
+        jobs = []
+        if settings.background_jobs and flags.enabled("bookings"):
+            jobs.append(asyncio.create_task(run_hold_sweeper(settings)))
+        yield
+        for job in jobs:
+            job.cancel()
+        log.info("api_stopped")
+
+    app = FastAPI(
+        title=settings.app_name,
+        version=__version__,
+        openapi_url=f"{settings.api_prefix}/openapi.json",
+        docs_url=f"{settings.api_prefix}/docs",
+        redoc_url=None,
+        lifespan=lifespan,
+    )
+
+    app.add_middleware(
+        SecurityHeadersMiddleware,
+        hsts=settings.cookie_secure,
+        max_body_bytes=settings.max_request_mb * 1024 * 1024,
+    )
+    app.add_middleware(RequestContextMiddleware)
+    if settings.cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_origins,
+            allow_credentials=True,
+            allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+            allow_headers=["content-type", "x-request-id", "idempotency-key", "x-requested-with"],
+        )
+    register_exception_handlers(app)
+    if configure_tracing(app, settings, get_engine):
+        log.info("tracing_enabled", endpoint=settings.otel_exporter_otlp_endpoint)
+
+    app.include_router(meta_router, prefix=settings.api_prefix)
+    app.include_router(auth_router, prefix=settings.api_prefix)
+    app.include_router(search_router, prefix=settings.api_prefix)
+    app.include_router(bookings_router, prefix=settings.api_prefix)
+    app.include_router(planner_router, prefix=settings.api_prefix)
+    app.include_router(recovery_router, prefix=settings.api_prefix)
+    app.include_router(operations_router, prefix=settings.api_prefix)
+    app.include_router(notifications_router, prefix=settings.api_prefix)
+    app.include_router(profiles_router, prefix=settings.api_prefix)
+    app.include_router(loyalty_router, prefix=settings.api_prefix)
+    app.include_router(admin_console_router, prefix=settings.api_prefix)
+    app.include_router(groups_router, prefix=settings.api_prefix)
+    app.include_router(holiday_router, prefix=settings.api_prefix)
+    app.include_router(watchlist_router, prefix=settings.api_prefix)
+    app.include_router(reviews_router, prefix=settings.api_prefix)
+    app.include_router(support_router, prefix=settings.api_prefix)
+    app.include_router(privacy_router, prefix=settings.api_prefix)
+
+    # Served on the API's own port only; the web proxy forwards /api/* and never /metrics.
+    @app.get("/metrics", include_in_schema=False)
+    def metrics() -> Response:
+        return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+    return app

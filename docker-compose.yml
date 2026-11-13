@@ -1,0 +1,128 @@
+name: tripmind
+
+x-api-env: &api-env
+  ENVIRONMENT: ${ENVIRONMENT:-local}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  LOG_JSON: ${LOG_JSON:-true}
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-tripmind}:${POSTGRES_PASSWORD:-tripmind}@db:5432/${POSTGRES_DB:-tripmind}
+  # A local-only default so `docker compose up` works on a fresh clone; production refuses it.
+  JWT_SECRET: ${JWT_SECRET:-local-demo-only-secret-not-for-production-0001}
+  ACCESS_TOKEN_TTL_MINUTES: ${ACCESS_TOKEN_TTL_MINUTES:-15}
+  REFRESH_TOKEN_TTL_DAYS: ${REFRESH_TOKEN_TTL_DAYS:-7}
+  COOKIE_SECURE: ${COOKIE_SECURE:-false}
+  TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-true}
+  DEMO_TRAVELER_EMAIL: ${DEMO_TRAVELER_EMAIL:-demo@tripmind.dev}
+  DEMO_ADMIN_EMAIL: ${DEMO_ADMIN_EMAIL:-admin@tripmind.dev}
+  CONFIG_DIR: /config
+  # The official finale data pack, mounted read-only (the files must never change).
+  HOLIDAY_DATA_DIR: /holiday-pack
+  HOLIDAY_EXTRA_DIR: /holiday-extra
+  REDIS_URL: redis://redis:6379/0
+
+services:
+  # Shared state for API replicas and the worker (two jobs: rate limits
+  # and job locks). Business data stays in PostgreSQL; losing Redis only loses counters.
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "128mb",
+              "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tripmind}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tripmind}
+      POSTGRES_DB: ${POSTGRES_DB:-tripmind}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # One-shot: apply migrations, seed demo accounts and, on first start, import the synthetic demo
+  # dataset through the normal ingestion pipeline. Set BOOTSTRAP_DEMO_DATA=false to skip it.
+  migrate:
+    # Same image as `api` (built once by the api service), so migrations always match the code.
+    image: tripmind-api:local
+    pull_policy: never
+    command:
+      - sh
+      - -c
+      - >-
+        alembic upgrade head && python -m app.cli seed && python -m app.cli holiday load
+    environment:
+      <<: *api-env
+    volumes:
+      - ./config:/config:ro
+      - ./hackathon-problem-1-holiday-package:/holiday-pack:ro
+      - ./data/extended:/holiday-extra:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build: ./backend
+    image: tripmind-api:local
+    environment:
+      <<: *api-env
+      BACKGROUND_JOBS: "false"  # the worker service runs scheduled jobs
+    volumes:
+      - ./config:/config:ro
+      - ./hackathon-problem-1-holiday-package:/holiday-pack:ro
+      - ./data/extended:/holiday-extra:ro
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Scheduled jobs (price alerts, releasing unconfirmed bookings, data clean-up). Same image as the API.
+  worker:
+    image: tripmind-api:local
+    pull_policy: never
+    command: ["python", "-m", "app.worker"]
+    environment: *api-env
+    healthcheck:  # the worker has no API; its metrics endpoint shows it is alive
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9100/metrics', timeout=2)"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+    volumes:
+      - ./config:/config:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        API_INTERNAL_URL: http://api:8000
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
